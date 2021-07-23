@@ -34,13 +34,31 @@ namespace ModuleSystem
 
 		public IReadOnlyList<ModuleAction> ChainedActions => _chainedActions;
 
+		public string Nickname
+		{
+			get
+			{
+				if (string.IsNullOrEmpty(_nickname))
+				{
+					_nickname = GetType().Name;
+				}
+				return _nickname;
+			}
+		}
+
+		private string _nickname = "";
+
+
 		#endregion
 
-		public ModuleAction()
+		public ModuleAction() : this(string.Empty) { }
+
+		public ModuleAction(string nickname)
 		{
 			UniqueIdentifier = Guid.NewGuid().ToString();
 			DataMap = new DataMap();
 			Root = this;
+			_nickname = nickname;
 		}
 
 		#region Public Methods
