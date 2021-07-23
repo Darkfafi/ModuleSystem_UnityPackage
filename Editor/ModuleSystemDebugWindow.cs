@@ -18,7 +18,7 @@ namespace ModuleSystem.Editor
 
 		public enum Headers : int
 		{
-			Type = 0,
+			Name = 0,
 			Id = 1,
 			Processing = 2,
 			DataMap = 3,
@@ -298,7 +298,7 @@ namespace ModuleSystem.Editor
 
 					string[] fieldsOptions = options.ToArray();
 
-					convertingData.TypeString = convertingAction.GetType().Name;
+					convertingData.NameString = convertingAction.Nickname;
 					convertingData.UniqueIdentifierString = convertingAction.UniqueIdentifier;
 					convertingData.DataMapOptions = dataMapOptions;
 					convertingData.FieldOptions = fieldsOptions;
@@ -327,7 +327,7 @@ namespace ModuleSystem.Editor
 
 			public class ModuleActionData
 			{
-				public string TypeString;
+				public string NameString;
 				public string UniqueIdentifierString;
 				public string[] DataMapOptions;
 				public string[] FieldOptions;
@@ -395,8 +395,8 @@ namespace ModuleSystem.Editor
 
 						switch (column)
 						{
-							case Headers.Type:
-								args.label = action.TypeString;
+							case Headers.Name:
+								args.label = action.NameString;
 								break;
 							case Headers.Id:
 								args.label = action.UniqueIdentifierString;
