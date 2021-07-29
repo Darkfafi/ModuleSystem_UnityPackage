@@ -39,12 +39,12 @@ namespace ModuleSystem.Editor
 
 		#region Public Methods
 
-		[MenuItem("ModuleSystem/TreeView")]
+		[MenuItem("ModuleSystem/ModuleActions Log")]
 		static void OpenWindow()
 		{
 			ModuleSystemDebugWindow window = GetWindow<ModuleSystemDebugWindow>();
 
-			window.titleContent = new GUIContent("ModuleSystem TreeView");
+			window.titleContent = new GUIContent("ModuleActions Logs");
 			window.Show();
 		}
 

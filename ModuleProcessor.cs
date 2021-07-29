@@ -65,6 +65,11 @@ namespace ModuleSystem
 
 		#region Public Methods
 
+		public IModule[] GetModules()
+		{
+			return _modules.ToArray();
+		}
+
 		public void AddModule(IModule module)
 		{
 			if (!_modules.Contains(module))
