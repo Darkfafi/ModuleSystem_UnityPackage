@@ -42,33 +42,33 @@ namespace ModuleSystem.Editor
 			window.Show();
 		}
 
-		public static GUIContent GetIcon(int stage)
+		public static GUIContent GetIcon(ValidStage state)
 		{
-			switch(stage)
+			switch(state)
 			{
-				case 0:
+				case ValidStage.Valid:
 					return _correctIcon;
-				case 1:
+				case ValidStage.Warning:
 					return _warningIcon;
-				case 2:
+				case ValidStage.Error:
 					return _errorIcon;
 			}
 			return null;
 		}
 
-		public static void DrawIconLabel(int stage, Action drawAction)
+		public static void DrawIconLabel(IHasValidState stateHolder, Action drawAction)
 		{
 			GUILayout.BeginHorizontal();
 			{
-				GUILayout.Label(GetIcon(stage), GUILayout.ExpandWidth(false));
+				GUIContent iconContent = new GUIContent(GetIcon(stateHolder.ValidState));
+				if(!string.IsNullOrEmpty(stateHolder.ValidStateReason))
+				{
+					iconContent.tooltip = stateHolder.ValidStateReason;
+				}
+				GUILayout.Label(iconContent, GUILayout.ExpandWidth(false));
 				drawAction?.Invoke();
 			}
 			GUILayout.EndHorizontal();
-		}
-
-		public static void DrawIconLabel(bool isValid, Action drawAction)
-		{
-			DrawIconLabel(isValid ? 0 : 2, drawAction);
 		}
 
 		public static Type[] GetAllExternalTypes()
@@ -146,14 +146,14 @@ namespace ModuleSystem.Editor
 							IModule[] modules = targetProcessorHolder.Processor.GetModules();
 							for (int i = 0; i < modules.Length; i++)
 							{
-								_editorItems.Add(new ModuleEditorItem(modules[i], _targetObject.name + ">> "));
+								_editorItems.Add(new ModuleEditorItem(modules[i], false, _targetObject.name + ">> "));
 							}
 						}
 					}
 
 					for (int i = 0; i < _externalTypes.Length; i++)
 					{
-						_editorItems.Add(new ModuleEditorItem(_externalTypes[i]));
+						_editorItems.Add(new ModuleEditorItem(_externalTypes[i], true));
 					}
 
 					foreach (var item in _editorItems)
@@ -172,7 +172,7 @@ namespace ModuleSystem.Editor
 							GUILayout.Space(10f);
 							GUILayout.BeginVertical("box");
 							{
-								DrawIconLabel(moduleItem.ValidityStage, () =>
+								DrawIconLabel(moduleItem, () =>
 								{
 									moduleItem.IsFoldedOut = EditorGUILayout.Foldout(moduleItem.IsFoldedOut, moduleItem.ItemName);
 								});
@@ -184,7 +184,7 @@ namespace ModuleSystem.Editor
 										GUILayout.Label("Inputs:");
 										foreach (var inputItem in moduleItem.InputItems)
 										{
-											DrawIconLabel(inputItem.IsValid, () =>
+											DrawIconLabel(inputItem, () =>
 											{
 												inputItem.IsFoldedOut = EditorGUILayout.Foldout(inputItem.IsFoldedOut, inputItem.InputName);
 											});
@@ -204,7 +204,7 @@ namespace ModuleSystem.Editor
 										GUILayout.Label("Outputs:");
 										foreach (var outputItem in moduleItem.OutputItems)
 										{
-											DrawIconLabel(outputItem.IsValid, () =>
+											DrawIconLabel(outputItem, () =>
 											{
 												outputItem.IsFoldedOut = EditorGUILayout.Foldout(outputItem.IsFoldedOut, outputItem.OutputName);
 											});
@@ -242,13 +242,19 @@ namespace ModuleSystem.Editor
 
 		#region Nested
 
-		private class ModuleEditorItem
+		private class ModuleEditorItem : IHasValidState
 		{
 			public readonly string ItemName;
 			public readonly ModuleEditorInputItem[] InputItems;
 			public readonly ModuleEditorOutputItem[] OutputItems;
+			public string ValidItemName => ItemName;
 
-			public int ValidityStage
+			public ValidStage ValidState
+			{
+				get; private set;
+			}
+
+			public string ValidStateReason
 			{
 				get; private set;
 			}
@@ -263,20 +269,26 @@ namespace ModuleSystem.Editor
 				get; private set;
 			}
 
+			public bool IsExternal
+			{
+				get; private set;
+			}
+
 			public bool IsFoldedOut;
 
-			public ModuleEditorItem(IModule module, string prefix = "")
-				: this(module.GetType(), prefix)
+			public ModuleEditorItem(IModule module, bool isExternal, string prefix = "")
+				: this(module.GetType(), isExternal, prefix)
 			{
 				ItemName = (prefix + module.UniqueIdentifier);
 			}
 
-			public ModuleEditorItem(Type type, string prefix = "")
+			public ModuleEditorItem(Type type, bool isExternal, string prefix = "")
 			{
 				ItemName = (prefix + type.Name);
 				ItemType = type;
 				InputItems = type.GetCustomAttributes<ModuleActionInputAttribute>(true).Select(x => new ModuleEditorInputItem(x)).ToArray();
 				OutputItems = type.GetCustomAttributes<ModuleActionOutputAttribute>(true).Select(x => new ModuleEditorOutputItem(x)).ToArray();
+				IsExternal = isExternal;
 			}
 
 			public void Initialize(ModuleEditorItem[] allItems)
@@ -285,23 +297,43 @@ namespace ModuleSystem.Editor
 				{
 					Initialized = true;
 
-					foreach(var inputItem in InputItems)
+					ValidState = ValidStage.Valid;
+					ValidStateReason = string.Empty;
+
+					foreach (var inputItem in InputItems)
 					{
-						inputItem.Init(allItems);
+						inputItem.Init(allItems, IsExternal);
 					}
 
 					foreach (var outputItem in OutputItems)
 					{
-						outputItem.Init(allItems);
+						outputItem.Init(allItems, IsExternal);
 					}
 
-					if(InputItems.Length == 0 && OutputItems.Length == 0)
+					List<IHasValidState> items = new List<IHasValidState>(InputItems);
+					items.AddRange(OutputItems);
+
+					if (items.Count == 0)
 					{
-						ValidityStage = 1;
+						ValidState = ValidStage.Warning;
+						ValidStateReason = "No Inputs or Outputs Registered";
 					}
 					else
-					{ 
-						ValidityStage = InputItems.All(x => x.IsValid) && OutputItems.All(x => x.IsValid) ? 0 : 2;
+					{
+						for (int i = 0; i < items.Count; i++)
+						{
+							IHasValidState validStateItem = items[i];
+							if (ValidState < validStateItem.ValidState)
+							{
+								ValidState = validStateItem.ValidState;
+								ValidStateReason = $"{validStateItem.ValidItemName}: {validStateItem.ValidStateReason}";
+							}
+
+							if (ValidState == ValidStage.Error)
+							{
+								break;
+							}
+						}
 					}
 				}
 			}
@@ -345,13 +377,23 @@ namespace ModuleSystem.Editor
 			}
 		}
 
-		private class ModuleEditorInputItem
+		private class ModuleEditorInputItem : IHasValidState
 		{
 			public readonly ModuleActionInputAttribute Input;
 			public readonly string InputName;
 			public bool IsFoldedOut;
 
-			public bool IsValid => ConnectedItems.Length > 0;
+			public string ValidItemName => InputName;
+
+			public ValidStage ValidState
+			{
+				get; private set;
+			}
+
+			public string ValidStateReason
+			{
+				get; private set;
+			}
 
 			public ModuleEditorItem[] ConnectedItems
 			{
@@ -364,9 +406,13 @@ namespace ModuleSystem.Editor
 				InputName = input.ActionType.Name;
 			}
 
-			public void Init(ModuleEditorItem[] allEditorItems)
+			public void Init(ModuleEditorItem[] allEditorItems, bool isExternal)
 			{
 				List<ModuleEditorItem> filteredItems = new List<ModuleEditorItem>(allEditorItems);
+				
+				ValidState = ValidStage.Valid;
+				ValidStateReason = string.Empty;
+
 				for (int i = filteredItems.Count - 1; i >= 0; i--)
 				{
 					if (!filteredItems[i].IsConnectedByOutput(Input))
@@ -375,16 +421,38 @@ namespace ModuleSystem.Editor
 					}
 				}
 				ConnectedItems = filteredItems.ToArray();
+
+				if(ConnectedItems.Length == 0)
+				{
+					ValidState = ValidStage.Error;
+					ValidStateReason = "No Connected Outputs";
+				}
+				else if(!isExternal && ConnectedItems.Any(x => x.IsExternal && x.ItemType is IModule))
+				{
+					ValidState = ValidStage.Warning;
+					ValidStateReason = "External Module Outputs";
+				}
 			}
 		}
 
-		private class ModuleEditorOutputItem
+		private class ModuleEditorOutputItem : IHasValidState
 		{
 			public readonly ModuleActionOutputAttribute Output;
 			public readonly string OutputName;
 
 			public bool IsFoldedOut;
-			public bool IsValid => ConnectedItems.Length > 0;
+
+			public string ValidItemName => OutputName;
+
+			public ValidStage ValidState
+			{
+				get; private set;
+			}
+
+			public string ValidStateReason
+			{
+				get; private set;
+			}
 
 			public ModuleEditorItem[] ConnectedItems
 			{
@@ -397,9 +465,12 @@ namespace ModuleSystem.Editor
 				OutputName = output.ActionType.Name;
 			}
 
-			public void Init(ModuleEditorItem[] allEditorItems)
+			public void Init(ModuleEditorItem[] allEditorItems, bool isExternal)
 			{
 				List<ModuleEditorItem> filteredItems = new List<ModuleEditorItem>(allEditorItems);
+				ValidState = ValidStage.Valid;
+				ValidStateReason = string.Empty;
+
 				for (int i = filteredItems.Count - 1; i >= 0; i--)
 				{
 					if (!filteredItems[i].IsConnectedByInput(Output))
@@ -407,8 +478,45 @@ namespace ModuleSystem.Editor
 						filteredItems.RemoveAt(i);
 					}
 				}
+
 				ConnectedItems = filteredItems.ToArray();
+
+				if (ConnectedItems.Length == 0)
+				{
+					ValidState = ValidStage.Error;
+					ValidStateReason = "No Connected Inputs";
+				}
+				else if (!isExternal && ConnectedItems.Any(x => x.IsExternal && x.ItemType is IModule))
+				{
+					ValidState = ValidStage.Warning;
+					ValidStateReason = "External Module Inputs";
+				}
 			}
+		}
+
+		public interface IHasValidState
+		{
+			string ValidItemName
+			{
+				get;
+			}
+
+			ValidStage ValidState
+			{
+				get;
+			}
+
+			string ValidStateReason
+			{
+				get;
+			}
+		}
+
+		public enum ValidStage : int
+		{
+			Valid = 0, 
+			Warning = 1,
+			Error = 2
 		}
 
 		#endregion
