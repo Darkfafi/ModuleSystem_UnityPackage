@@ -9,6 +9,9 @@ namespace ModuleSystem
 		#region Variables
 
 		public readonly string UniqueIdentifier;
+
+		internal bool IsDirty = false;
+
 		private readonly List<ModuleAction> _chainedActions = new List<ModuleAction>();
 		private readonly HashSet<string> _processedByModulesList = new HashSet<string>();
 		private readonly HashSet<string> _chainedByProcessorList = new HashSet<string>();
@@ -68,12 +71,15 @@ namespace ModuleSystem
 			if (action.Source != null)
 			{
 				action.Source._chainedActions.Remove(action);
+				action.Source.IsDirty = true;
 			}
 
 			action.Source = this;
 			action.Root = Root;
 
 			_chainedActions.Add(action);
+
+			IsDirty = true;
 		}
 
 		public bool HasUpwards<T>(Predicate<T> predicate, Predicate<ModuleAction> chainBlockade)
