@@ -18,6 +18,7 @@ namespace ModuleSystem
 
 		private bool _isProcessing = false;
 		private IModule _lockingModule = null;
+		private ModuleAction _lockingAction = null;
 
 		private ModuleAction _initialAction = null;
 		private Stack<ModuleAction> _executionStack = new Stack<ModuleAction>();
@@ -157,6 +158,13 @@ namespace ModuleSystem
 			if (IsLockingModule(module))
 			{
 				_lockingModule = null;
+
+				if(_lockingAction != null && _lockingAction.IsDirty)
+				{
+					ChainActions(_lockingAction);
+					_lockingAction = null;
+				}
+
 				TryProcessStack();
 			}
 		}
@@ -212,6 +220,8 @@ namespace ModuleSystem
 				{
 					IModule module = _modules[i];
 					_lockingModule = module;
+					_lockingAction = action;
+
 					if (!action.IsProcessedByModule(module))
 					{
 						// Processing Callback
@@ -235,25 +245,26 @@ namespace ModuleSystem
 							}
 							else
 							{
-								ChainActions(action);
+								if (action.IsDirty)
+								{
+									ChainActions(action);
+									// If a new actions are on the stack, process those before finishing the processing of the source
+									if (_executionStack.Peek().UniqueIdentifier != action.UniqueIdentifier)
+									{
+										break;
+									}
+								}
 
-								// If a new actions are on the stack, process those before finishing the processing of the source
-								if (_executionStack.Peek().UniqueIdentifier != action.UniqueIdentifier)
-								{
-									break;
-								}
-								else
-								{
-									i = -1;
-									continue;
-								}
+								i = -1;
+								continue;
 							}
 						}
 					}
 
 					_lockingModule = null;
+					_lockingAction = null;
 				}
-
+				
 				// After the action processing is done, check for chain reactions, if any are added, process them before closing this action
 				ChainActions(action);
 				if (_executionStack.Peek().UniqueIdentifier != action.UniqueIdentifier)
@@ -261,6 +272,7 @@ namespace ModuleSystem
 					continue;
 				}
 
+				action.IsDirty = false;
 				_executionStack.Pop();
 
 				ActionProcessedEvent?.Invoke(action);
@@ -277,6 +289,8 @@ namespace ModuleSystem
 						{
 							_modules[i].OnResolvedStack(actionBase);
 						}
+
+						actionBase.IsDirty = false;
 
 						ActionStackProcessedEvent?.Invoke(actionBase);
 					}
