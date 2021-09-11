@@ -8,7 +8,7 @@ namespace ModuleSystem
 	{
 		#region Events
 
-		public delegate void ModuleActionHandler(ModuleAction moduleAction);
+		public delegate void ModuleActionHandler(ModuleAction moduleAction, ModuleProcessor processor);
 		public event ModuleActionHandler ActionProcessedEvent;
 		public event ModuleActionHandler ActionStackProcessedEvent;
 
@@ -16,9 +16,12 @@ namespace ModuleSystem
 
 		#region Variables
 
+		public readonly string UniqueIdentifier;
+
 		private bool _isProcessing = false;
 		private IModule _lockingModule = null;
-		private ModuleAction _lockingAction = null;
+		private ModuleAction _lockingModuleAction = null;
+		private int _preProcessActionChainCount;
 
 		private ModuleAction _initialAction = null;
 		private Stack<ModuleAction> _executionStack = new Stack<ModuleAction>();
@@ -32,17 +35,15 @@ namespace ModuleSystem
 
 		#region Properties
 
-		public string UniqueIdentifier
-		{
-			get;
-		}
+		public IReadOnlyList<IModule> Modules => _modules;
 
 		public bool IsProcessing => _isProcessing || _lockingModule != null;
 
-		public bool IsDisabled
+		public bool IsPaused
 		{
 			get; private set;
 		}
+
 
 		#endregion
 
@@ -66,9 +67,16 @@ namespace ModuleSystem
 
 		#region Public Methods
 
-		public IModule[] GetModules()
+		public bool HasNextAction(Predicate<ModuleAction> predicate)
 		{
-			return _modules.ToArray();
+			foreach (var item in _nextActions)
+			{
+				if (predicate(item))
+				{
+					return true;
+				}
+			}
+			return false;
 		}
 
 		public void AddModule(IModule module)
@@ -127,24 +135,19 @@ namespace ModuleSystem
 
 		public void EnqueueAction(ModuleAction action)
 		{
-			if (!_started)
-			{
-				_nextActions.Enqueue(action);
-				return;
-			}
-
-			if (!IsDisabled || IsProcessing)
-			{
-				_nextActions.Enqueue(action);
-				TryProcessStack();
-			}
+			_nextActions.Enqueue(action);
+			TryProcessStack();
 		}
 
-		public void SetDisabled(bool isDisabled)
+		public void SetPaused(bool isPaused)
 		{
-			if (IsDisabled != isDisabled)
+			if (IsPaused != isPaused)
 			{
-				IsDisabled = isDisabled;
+				IsPaused = isPaused;
+				if (!IsPaused)
+				{
+					TryProcessStack();
+				}
 			}
 		}
 
@@ -159,10 +162,12 @@ namespace ModuleSystem
 			{
 				_lockingModule = null;
 
-				if(_lockingAction != null && _lockingAction.IsDirty)
+				if (_lockingModuleAction != null &&
+					_preProcessActionChainCount != _lockingModuleAction.ChainedCount)
 				{
-					ChainActions(_lockingAction);
-					_lockingAction = null;
+					_preProcessActionChainCount = _lockingModuleAction.ChainedCount;
+					ChainActions(_lockingModuleAction);
+					_lockingModuleAction = null;
 				}
 
 				TryProcessStack();
@@ -182,6 +187,7 @@ namespace ModuleSystem
 			_executionStack.Clear();
 
 			_lockingModule = null;
+			_lockingModuleAction = null;
 			_initialAction = null;
 			_isProcessing = false;
 			_started = false;
@@ -193,7 +199,7 @@ namespace ModuleSystem
 
 		private void TryProcessStack()
 		{
-			if (IsProcessing)
+			if (!_started || IsProcessing)
 			{
 				return;
 			}
@@ -201,7 +207,7 @@ namespace ModuleSystem
 			_isProcessing = true;
 
 			// If the stack is empty, but the queue is not, then place the first of the queue on top of the stack
-			if (_executionStack.Count == 0 && _nextActions.Count > 0)
+			if (_executionStack.Count == 0 && _nextActions.Count > 0 && !IsPaused)
 			{
 				_executionStack.Push(_nextActions.Dequeue());
 			}
@@ -210,6 +216,7 @@ namespace ModuleSystem
 			while (_executionStack.Count > 0)
 			{
 				ModuleAction action = _executionStack.Peek();
+				_preProcessActionChainCount = action.ChainedCount;
 
 				if (_initialAction == null)
 				{
@@ -220,34 +227,38 @@ namespace ModuleSystem
 				{
 					IModule module = _modules[i];
 					_lockingModule = module;
-					_lockingAction = action;
 
 					if (!action.IsProcessedByModule(module))
 					{
 						// Processing Callback
 						if (action is CallbackModuleAction callbackModule && callbackModule.ModuleSource.UniqueIdentifier == module.UniqueIdentifier)
 						{
-							callbackModule.TryMarkProcessedByModule(module);
+							callbackModule.MarkProcessedByModule(module);
 							callbackModule?.ModuleCallback(callbackModule);
 							break;
 						}
+
 						// Processing Module
-						else if (module.TryProcess(action, () => 
-						{
-							Unlock(module);
+						else if (module.TryProcess(action, ()=> 
+						{ 
+							Unlock(module); 
 						}))
 						{
-							action.TryMarkProcessedByModule(module);
+							action.MarkProcessedByModule(module);
 							if (_lockingModule != null)
 							{
+								_lockingModuleAction = action;
 								_isProcessing = false;
 								return;
 							}
 							else
 							{
-								if (action.IsDirty)
+								// If the processing caused the 
+								if (_preProcessActionChainCount != action.ChainedCount)
 								{
+									_preProcessActionChainCount = action.ChainedCount;
 									ChainActions(action);
+
 									// If a new actions are on the stack, process those before finishing the processing of the source
 									if (_executionStack.Peek().UniqueIdentifier != action.UniqueIdentifier)
 									{
@@ -255,6 +266,7 @@ namespace ModuleSystem
 									}
 								}
 
+								// The action has been processed and can have a different state. Thus all modules should again be handed it to see if they wish to react to it.
 								i = -1;
 								continue;
 							}
@@ -262,9 +274,8 @@ namespace ModuleSystem
 					}
 
 					_lockingModule = null;
-					_lockingAction = null;
 				}
-				
+
 				// After the action processing is done, check for chain reactions, if any are added, process them before closing this action
 				ChainActions(action);
 				if (_executionStack.Peek().UniqueIdentifier != action.UniqueIdentifier)
@@ -272,10 +283,11 @@ namespace ModuleSystem
 					continue;
 				}
 
-				action.IsDirty = false;
+				// Remove action from Stack, for it is fully processed
 				_executionStack.Pop();
+				_lockingModuleAction = null;
 
-				ActionProcessedEvent?.Invoke(action);
+				ActionProcessedEvent?.Invoke(action, this);
 
 				// If the Stack is completely resolved
 				if (_executionStack.Count == 0)
@@ -290,13 +302,11 @@ namespace ModuleSystem
 							_modules[i].OnResolvedStack(actionBase);
 						}
 
-						actionBase.IsDirty = false;
-
-						ActionStackProcessedEvent?.Invoke(actionBase);
+						ActionStackProcessedEvent?.Invoke(actionBase, this);
 					}
 
 					// Process next in queue, causing the next stack flow on the execution stack
-					if (_nextActions.Count > 0)
+					if (_nextActions.Count > 0 && !IsPaused)
 					{
 						_executionStack.Push(_nextActions.Dequeue());
 					}
@@ -312,9 +322,10 @@ namespace ModuleSystem
 			for (int i = source.ChainedActions.Count - 1; i >= 0; i--)
 			{
 				ModuleAction chainedAction = source.ChainedActions[i];
-				if (chainedAction.TryMarkChainedByProcessor(this))
+				if (!chainedAction.IsChainedByProcessor(this))
 				{
 					_executionStack.Push(chainedAction);
+					chainedAction.MarkChainedByProcessor(this);
 				}
 			}
 		}
