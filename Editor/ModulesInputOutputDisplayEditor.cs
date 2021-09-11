@@ -143,8 +143,8 @@ namespace ModuleSystem.Editor
 					{
 						if (targetProcessorHolder.Processor != null)
 						{
-							IModule[] modules = targetProcessorHolder.Processor.GetModules();
-							for (int i = 0; i < modules.Length; i++)
+							IReadOnlyList<IModule> modules = targetProcessorHolder.Processor.Modules;
+							for (int i = 0, c = modules.Count; i < c; i++)
 							{
 								_editorItems.Add(new ModuleEditorItem(modules[i], false, _targetObject.name + ">> "));
 							}
