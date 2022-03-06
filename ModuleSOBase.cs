@@ -59,6 +59,8 @@ namespace ModuleSystem.Core
 			get; private set;
 		}
 
+		public virtual bool AllowMultiProcessing => false;
+
 		public bool IsLocking => Processor != null && Processor.IsLockingModule(this);
 
 		#endregion

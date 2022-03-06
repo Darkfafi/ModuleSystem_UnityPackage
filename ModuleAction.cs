@@ -282,10 +282,7 @@ namespace ModuleSystem
 
 		internal void MarkProcessedByModule(IModule module)
 		{
-			if (!IsProcessedByModule(module))
-			{
-				_processedByModulesList.Add(module.UniqueIdentifier);
-			}
+			_processedByModulesList.Add(module.UniqueIdentifier);
 		}
 
 		internal bool IsChainedByProcessor(ModuleProcessor processor)
