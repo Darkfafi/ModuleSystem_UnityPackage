@@ -41,6 +41,8 @@ namespace ModuleSystem.Core
 			get; private set;
 		}
 
+		public virtual bool AllowMultiProcessing => false;
+
 #if UNITY_EDITOR
 		public string UniqueIdentifier
 		{

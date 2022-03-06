@@ -228,7 +228,7 @@ namespace ModuleSystem
 					IModule module = _modules[i];
 					_lockingModule = module;
 
-					if (!action.IsProcessedByModule(module))
+					if (module.AllowMultiProcessing || !action.IsProcessedByModule(module))
 					{
 						// Processing Callback
 						if (action is CallbackModuleAction callbackModule && callbackModule.ModuleSource.UniqueIdentifier == module.UniqueIdentifier)

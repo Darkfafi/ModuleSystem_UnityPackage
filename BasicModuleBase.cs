@@ -70,6 +70,8 @@ namespace ModuleSystem.Core
 
 		public bool IsLocking => Processor.IsLockingModule(this);
 
+		public virtual bool AllowMultiProcessing => false;
+
 		public ModuleBase()
 		{
 			UniqueIdentifier = "[" + GetType().Name + "]: " + Guid.NewGuid().ToString();

@@ -9,6 +9,11 @@ namespace ModuleSystem.Core
 			get;
 		}
 
+		bool AllowMultiProcessing
+		{
+			get;
+		}
+
 		bool TryProcess(ModuleAction action, Action unlockMethod);
 		void OnResolvedStack(ModuleAction coreAction);
 		void Init(ModuleProcessor parent);
