@@ -23,9 +23,9 @@ namespace ModuleSystem
 		private ModuleAction _lockingModuleAction = null;
 		private int _preProcessActionChainCount;
 
-		private ModuleAction _initialAction = null;
+		private ModuleActionRequest _initialActionRequest = null;
 		private Stack<ModuleAction> _executionStack = new Stack<ModuleAction>();
-		private Queue<ModuleAction> _nextActions = new Queue<ModuleAction>();
+		private Queue<ModuleActionRequest> _actionRequests = new Queue<ModuleActionRequest>();
 
 		private List<IModule> _modules;
 
@@ -67,11 +67,23 @@ namespace ModuleSystem
 
 		#region Public Methods
 
-		public bool HasNextAction(Predicate<ModuleAction> predicate)
+		public bool HasActionRequest(Predicate<ModuleActionRequest> predicate)
 		{
-			foreach (var item in _nextActions)
+			foreach (var item in _actionRequests)
 			{
 				if (predicate(item))
+				{
+					return true;
+				}
+			}
+			return false;
+		}
+
+		public bool HasActionRequest(Predicate<ModuleAction> predicate)
+		{
+			foreach (var item in _actionRequests)
+			{
+				if (predicate(item.ModuleAction))
 				{
 					return true;
 				}
@@ -135,7 +147,12 @@ namespace ModuleSystem
 
 		public void EnqueueAction(ModuleAction action)
 		{
-			_nextActions.Enqueue(action);
+			EnqueueAction(new ModuleActionRequest(action));
+		}
+
+		public void EnqueueAction(ModuleActionRequest action)
+		{
+			_actionRequests.Enqueue(action);
 			TryProcessStack();
 		}
 
@@ -183,12 +200,12 @@ namespace ModuleSystem
 
 			_modules = null;
 
-			_nextActions.Clear();
+			_actionRequests.Clear();
 			_executionStack.Clear();
 
 			_lockingModule = null;
 			_lockingModuleAction = null;
-			_initialAction = null;
+			_initialActionRequest = null;
 			_isProcessing = false;
 			_started = false;
 		}
@@ -207,21 +224,13 @@ namespace ModuleSystem
 			_isProcessing = true;
 
 			// If the stack is empty, but the queue is not, then place the first of the queue on top of the stack
-			if (_executionStack.Count == 0 && _nextActions.Count > 0 && !IsPaused)
-			{
-				_executionStack.Push(_nextActions.Dequeue());
-			}
+			TrySetNextActionRequest();
 
 			// Stack Resolve Loop
 			while (_executionStack.Count > 0)
 			{
 				ModuleAction action = _executionStack.Peek();
 				_preProcessActionChainCount = action.ChainedCount;
-
-				if (_initialAction == null)
-				{
-					_initialAction = action;
-				}
 
 				for (int i = 0; i < _modules.Count; i++)
 				{
@@ -292,25 +301,22 @@ namespace ModuleSystem
 				// If the Stack is completely resolved
 				if (_executionStack.Count == 0)
 				{
-					if (_initialAction != null)
+					if (_initialActionRequest != null)
 					{
-						ModuleAction actionBase = _initialAction;
-						_initialAction = null;
+						ModuleActionRequest request = _initialActionRequest;
+						_initialActionRequest = null;
 
 						for (int i = 0; i < _modules.Count; i++)
 						{
-							_modules[i].OnResolvedStack(actionBase);
+							_modules[i].OnResolvedStack(request.ModuleAction);
 						}
 
-						ActionStackProcessedEvent?.Invoke(actionBase, this);
-					}
-
-					// Process next in queue, causing the next stack flow on the execution stack
-					if (_nextActions.Count > 0 && !IsPaused)
-					{
-						_executionStack.Push(_nextActions.Dequeue());
+						ActionStackProcessedEvent?.Invoke(request.ModuleAction, this);
 					}
 				}
+
+				// Process next in queue, causing the next stack flow on the execution stack
+				TrySetNextActionRequest();
 			}
 
 			_isProcessing = false;
@@ -327,6 +333,16 @@ namespace ModuleSystem
 					_executionStack.Push(chainedAction);
 					chainedAction.MarkChainedByProcessor(this);
 				}
+			}
+		}
+
+		private void TrySetNextActionRequest()
+		{
+			if (_executionStack.Count == 0 && _actionRequests.Count > 0 && !IsPaused)
+			{
+				ModuleActionRequest req = _actionRequests.Dequeue();
+				_initialActionRequest = req;
+				_executionStack.Push(req.ModuleAction);
 			}
 		}
 
