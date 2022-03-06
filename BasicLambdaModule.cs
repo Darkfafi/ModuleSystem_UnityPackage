@@ -5,10 +5,14 @@
 		public delegate bool ModuleHandler(ModuleAction action, ModuleProcessor parent);
 
 		private ModuleHandler _handler;
+		private bool _multiProcessing = false;
 
-		public BasicLambdaModule(ModuleHandler handler)
+		public override bool AllowMultiProcessing => _multiProcessing;
+
+		public BasicLambdaModule(ModuleHandler handler, bool multiProcessing = false)
 		{
 			_handler = handler;
+			_multiProcessing = multiProcessing;
 		}
 
 		protected override bool TryProcessInternal(ModuleAction action)
@@ -28,10 +32,14 @@
 		public delegate bool ModuleHandler(T action, ModuleProcessor parent);
 
 		private ModuleHandler _handler;
+		private bool _multiProcessing = false;
 
-		public BasicLambdaModule(ModuleHandler handler)
+		public override bool AllowMultiProcessing => _multiProcessing;
+
+		public BasicLambdaModule(ModuleHandler handler, bool multiProcessing = false)
 		{
 			_handler = handler;
+			_multiProcessing = multiProcessing;
 		}
 
 		protected override bool TryProcessInternal(T action)
