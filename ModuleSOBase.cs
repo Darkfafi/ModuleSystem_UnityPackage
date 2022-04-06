@@ -90,6 +90,11 @@ namespace ModuleSystem.Core
 
 		}
 
+		public virtual void OnResolvedRequest(ModuleActionRequest request)
+		{
+
+		}
+
 		public abstract bool TryProcess(ModuleAction action, Action unlockMethod);
 
 		#endregion

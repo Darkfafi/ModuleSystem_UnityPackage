@@ -9,8 +9,10 @@ namespace ModuleSystem
 		#region Events
 
 		public delegate void ModuleActionHandler(ModuleAction moduleAction, ModuleProcessor processor);
+		public delegate void ModuleActionRequestHandler(ModuleActionRequest moduleActionRequest, ModuleProcessor processor);
 		public event ModuleActionHandler ActionProcessedEvent;
 		public event ModuleActionHandler ActionStackProcessedEvent;
+		public event ModuleActionRequestHandler ActionRequestProcessedEvent;
 
 		#endregion
 
@@ -311,7 +313,15 @@ namespace ModuleSystem
 							_modules[i].OnResolvedStack(request.ModuleAction);
 						}
 
+						for (int i = 0; i < _modules.Count; i++)
+						{
+							_modules[i].OnResolvedRequest(request);
+						}
+
+						request.MarkAsProcessed();
+
 						ActionStackProcessedEvent?.Invoke(request.ModuleAction, this);
+						ActionRequestProcessedEvent?.Invoke(request, this);
 					}
 				}
 

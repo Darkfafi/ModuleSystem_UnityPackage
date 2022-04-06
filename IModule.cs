@@ -19,5 +19,6 @@ namespace ModuleSystem.Core
 		void Init(ModuleProcessor parent);
 		void StartModule();
 		void Deinit();
+		void OnResolvedRequest(ModuleActionRequest request);
 	}
 }

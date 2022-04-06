@@ -91,8 +91,13 @@ namespace ModuleSystem.Core
 		{
 			Processor = null;
 		}
-
+		
 		public virtual void OnResolvedStack(ModuleAction coreAction)
+		{
+
+		}
+
+		public virtual void OnResolvedRequest(ModuleActionRequest request)
 		{
 
 		}
